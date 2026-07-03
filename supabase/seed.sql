@@ -1,0 +1,9 @@
+-- Supabase `supabase db reset` seed hook.
+--
+-- SmartCanteen 360 seeds application data through Prisma (typed, idempotent):
+--
+--     pnpm db:seed
+--
+-- Run that after `prisma migrate deploy` rather than adding SQL inserts here,
+-- so the RBAC catalogue and demo tenant stay in sync with the Zod/TS source of
+-- truth in packages/shared. This file is intentionally left as a pointer.
