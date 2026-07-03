@@ -3,6 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   // typedRoutes intentionally disabled while feature pages are still being built;
   // re-enable once all sidebar routes have corresponding pages.
+  eslint: {
+    // Type-checking still runs; skip ESLint during the production build so a
+    // lint-config difference on the CI/Vercel runner can't block deploys.
+    ignoreDuringBuilds: true,
+  },
   images: {
     remotePatterns: [
       {
