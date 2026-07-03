@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "SmartCanteen 360 — enterprise digital canteen management platform (web admin, mobile, API).",
-  "packageManager": "pnpm@9.12.0",
+  "//": "npm `workspaces` lists ONLY apps/web so Vercel's default `npm install` at the repo root installs & hoists next there (where Vercel detects the framework). Local dev still uses pnpm via pnpm-workspace.yaml, which npm ignores.",
+  "workspaces": ["apps/web"],
   "engines": {
-    "node": ">=20.11.0",
-    "pnpm": ">=9.0.0"
+    "node": ">=20.11.0"
   },
   "scripts": {
     "build": "turbo run build",
