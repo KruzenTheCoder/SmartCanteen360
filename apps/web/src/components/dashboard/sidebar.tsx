@@ -89,10 +89,10 @@ export function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card lg:block">
       <div className="flex h-16 items-center gap-2 border-b px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 via-fuchsia-500 to-indigo-600 shadow-lg shadow-indigo-500/30">
           <Utensils className="h-5 w-5 text-white" />
         </div>
-        <span className="text-lg font-bold">SmartCanteen 360</span>
+        <span className="gradient-text text-lg font-bold tracking-tight">NetBite360</span>
       </div>
 
       <nav className="sc-scrollbar h-[calc(100vh-4rem)] space-y-6 overflow-y-auto px-4 py-6">

@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SmartCanteen 360 | Enterprise Digital Canteen Management",
+  title: "NetBite360 | Enterprise Digital Canteen Management",
   description:
     "Complete digital canteen management platform with meal booking, kitchen operations, POS, inventory, loyalty, and analytics.",
   keywords: [

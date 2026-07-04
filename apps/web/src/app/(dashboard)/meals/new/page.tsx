@@ -5,6 +5,7 @@ import { ResourceForm, type Field } from "@/components/shared/resource-form";
 
 const fields: Field[] = [
   { name: "name", label: "Meal name", required: true, placeholder: "Grilled Chicken & Veg" },
+  { name: "imageUrl", label: "Meal photo (image URL)", type: "image", full: true, placeholder: "https://images.unsplash.com/…" },
   { name: "status", label: "Status", type: "select", defaultValue: "PUBLISHED", options: [
     { label: "Draft", value: "DRAFT" },
     { label: "Published", value: "PUBLISHED" },

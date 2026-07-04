@@ -52,7 +52,7 @@ function ResetPasswordForm() {
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg">
             <Utensils className="h-8 w-8 text-white" />
           </div>
-          <h1 className="gradient-text text-2xl font-bold">SmartCanteen 360</h1>
+          <h1 className="gradient-text text-2xl font-bold">NetBite360</h1>
         </div>
 
         <Card className="border-0 shadow-xl">

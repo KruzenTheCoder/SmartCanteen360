@@ -63,7 +63,7 @@ export default function LoginPage() {
       auth.setTokens(response.accessToken, response.refreshToken);
 
       toast.success("Login successful!", {
-        description: "Welcome back to SmartCanteen 360",
+        description: "Welcome back to NetBite360",
       });
 
       // Redirect to dashboard
@@ -83,10 +83,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 mb-4">
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-600 via-fuchsia-500 to-indigo-600 flex items-center justify-center shadow-xl shadow-fuchsia-500/30 mb-4">
             <Utensils className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold gradient-text">SmartCanteen 360</h1>
+          <h1 className="text-2xl font-bold gradient-text">NetBite360</h1>
           <p className="text-muted-foreground text-sm">Enterprise Digital Canteen Management</p>
         </div>
 

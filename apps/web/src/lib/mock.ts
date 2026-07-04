@@ -51,11 +51,17 @@ const employees = [
   { id: "e5", employeeNumber: "E-0005", firstName: "Sipho", lastName: "Dlamini", status: "SUSPENDED", department: { name: "Engineering" }, wallet: { balance: 0 }, loyaltyAccount: { pointsBalance: 15, tier: "BRONZE" } },
 ];
 
+const img = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=800&q=80`;
+
 const meals = [
-  { id: "m1", name: "Grilled Chicken & Veg", status: "PUBLISHED", category: { name: "Lunch Mains" }, costPrice: 22.5, retailPrice: 45, subsidyPrice: 15, nutrition: { calories: 520, protein: 42, carbs: 38, fat: 16 } },
-  { id: "m2", name: "Beef Burger & Chips", status: "PUBLISHED", category: { name: "Lunch Mains" }, costPrice: 28, retailPrice: 55, subsidyPrice: 20, nutrition: { calories: 780, protein: 35, carbs: 62, fat: 34 } },
-  { id: "m3", name: "Vegetable Curry & Rice", status: "PUBLISHED", category: { name: "Lunch Mains" }, costPrice: 18, retailPrice: 40, subsidyPrice: 12, nutrition: { calories: 610, protein: 18, carbs: 88, fat: 14 } },
-  { id: "m4", name: "Caesar Salad", status: "DRAFT", category: { name: "Salads" }, costPrice: 16, retailPrice: 38, subsidyPrice: 10, nutrition: { calories: 320, protein: 12, carbs: 18, fat: 22 } },
+  { id: "m1", name: "Grilled Chicken & Veg", status: "PUBLISHED", category: { name: "Lunch Mains" }, imageUrl: img("1532550907401-a500c9a57435"), costPrice: 22.5, retailPrice: 45, subsidyPrice: 15, nutrition: { calories: 520, protein: 42, carbs: 38, fat: 16 } },
+  { id: "m2", name: "Beef Burger & Chips", status: "PUBLISHED", category: { name: "Lunch Mains" }, imageUrl: img("1568901346375-23c9450c58cd"), costPrice: 28, retailPrice: 55, subsidyPrice: 20, nutrition: { calories: 780, protein: 35, carbs: 62, fat: 34 } },
+  { id: "m3", name: "Vegetable Curry & Rice", status: "PUBLISHED", category: { name: "Lunch Mains" }, imageUrl: img("1631452180519-c014fe946bc7"), costPrice: 18, retailPrice: 40, subsidyPrice: 12, nutrition: { calories: 610, protein: 18, carbs: 88, fat: 14 } },
+  { id: "m4", name: "Caesar Salad", status: "PUBLISHED", category: { name: "Salads" }, imageUrl: img("1550304943-4f24f54ddde9"), costPrice: 16, retailPrice: 38, subsidyPrice: 10, nutrition: { calories: 320, protein: 12, carbs: 18, fat: 22 } },
+  { id: "m5", name: "Margherita Pizza", status: "PUBLISHED", category: { name: "Lunch Mains" }, imageUrl: img("1574071318508-1cdbab80d002"), costPrice: 25, retailPrice: 52, subsidyPrice: 18, nutrition: { calories: 690, protein: 26, carbs: 78, fat: 24 } },
+  { id: "m6", name: "Sushi Platter", status: "PUBLISHED", category: { name: "Specials" }, imageUrl: img("1579584425555-c3ce17fd4351"), costPrice: 40, retailPrice: 78, subsidyPrice: 25, nutrition: { calories: 480, protein: 30, carbs: 62, fat: 10 } },
+  { id: "m7", name: "Berry Breakfast Bowl", status: "PUBLISHED", category: { name: "Breakfast" }, imageUrl: img("1490474418585-ba9bad8fd0ea"), costPrice: 14, retailPrice: 34, subsidyPrice: 9, nutrition: { calories: 290, protein: 12, carbs: 46, fat: 6 } },
+  { id: "m8", name: "Chocolate Brownie", status: "DRAFT", category: { name: "Desserts" }, imageUrl: img("1606313564200-e75d5e30476c"), costPrice: 8, retailPrice: 22, subsidyPrice: 5, nutrition: { calories: 410, protein: 5, carbs: 52, fat: 20 } },
 ];
 
 const retailProducts = [
@@ -112,7 +118,7 @@ const notifications = [
 const rewards = [
   { id: "rw1", name: "Free Coffee", pointsCost: 100, stock: null, status: "AVAILABLE" },
   { id: "rw2", name: "Free Lunch", pointsCost: 500, stock: 25, status: "AVAILABLE" },
-  { id: "rw3", name: "SmartCanteen Mug", pointsCost: 250, stock: 8, status: "AVAILABLE" },
+  { id: "rw3", name: "NetBite360 Mug", pointsCost: 250, stock: 8, status: "AVAILABLE" },
 ];
 
 const leaderboard = employees

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 export interface Field {
   name: string;
   label: string;
-  type?: "text" | "email" | "number" | "textarea" | "select";
+  type?: "text" | "email" | "number" | "textarea" | "select" | "image";
   placeholder?: string;
   required?: boolean;
   options?: { label: string; value: string }[];
@@ -90,7 +90,27 @@ export function ResourceForm({
                 {f.required ? <span className="text-red-500"> *</span> : null}
               </Label>
 
-              {f.type === "textarea" ? (
+              {f.type === "image" ? (
+                <div className="space-y-3">
+                  <Input
+                    id={f.name}
+                    type="url"
+                    placeholder={f.placeholder ?? "https://…/photo.jpg"}
+                    value={values[f.name]}
+                    onChange={(e) => set(f.name, e.target.value)}
+                  />
+                  <div className="relative aspect-[16/9] w-full max-w-sm overflow-hidden rounded-lg border bg-muted">
+                    {values[f.name] ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={values[f.name]} alt="preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                        Image preview
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : f.type === "textarea" ? (
                 <textarea
                   id={f.name}
                   className={cn(inputCls, "h-24 py-2")}

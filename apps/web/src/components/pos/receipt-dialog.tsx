@@ -26,7 +26,7 @@ function receiptHtml(sale: Sale): string {
     .bold { font-weight: bold; }
     .center { text-align: center; }
   </style></head><body>
-    <h1>SmartCanteen 360</h1>
+    <h1>NetBite360</h1>
     <div class="muted">Tax Invoice</div>
     <div class="row"><span>Receipt</span><span>${sale.receiptNumber}</span></div>
     <div class="row"><span>Date</span><span>${new Date(sale.at).toLocaleString()}</span></div>
