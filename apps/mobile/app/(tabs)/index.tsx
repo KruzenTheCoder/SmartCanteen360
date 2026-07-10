@@ -32,7 +32,7 @@ export default function DashboardScreen() {
   return (
     <Screen
       title={`Hi, ${me?.firstName ?? "there"} 👋`}
-      subtitle="Welcome back to SmartCanteen"
+      subtitle="Welcome back to NetBite360"
       onRefresh={refetch}
       refreshing={isRefetching}
     >

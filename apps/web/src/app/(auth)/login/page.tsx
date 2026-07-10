@@ -24,6 +24,11 @@ import {
 import { authApi } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { DEMO_MODE, DEMO_CREDENTIALS } from "@/lib/mock";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
+
+/** Demo helpers only show when there is no real Supabase project wired up. */
+const showDemo = DEMO_MODE && !isSupabaseConfigured;
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -45,8 +50,8 @@ export default function LoginPage() {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: DEMO_MODE ? DEMO_CREDENTIALS.email : "",
-      password: DEMO_MODE ? DEMO_CREDENTIALS.password : "",
+      email: showDemo ? DEMO_CREDENTIALS.email : "",
+      password: showDemo ? DEMO_CREDENTIALS.password : "",
       rememberMe: false,
     },
   });
@@ -54,19 +59,27 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      const response = await authApi.login({
-        email: data.email,
-        password: data.password,
-      });
-
-      // Store tokens
-      auth.setTokens(response.accessToken, response.refreshToken);
+      if (isSupabaseConfigured) {
+        // Production: real Supabase Auth (super users + normal users).
+        const supabase = createClient();
+        const { error } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
+        if (error) throw new Error(error.message);
+      } else {
+        // Demo mode: fake login against in-memory data.
+        const response = await authApi.login({
+          email: data.email,
+          password: data.password,
+        });
+        auth.setTokens(response.accessToken, response.refreshToken);
+      }
 
       toast.success("Login successful!", {
         description: "Welcome back to NetBite360",
       });
 
-      // Redirect to dashboard
       router.push("/dashboard");
       router.refresh();
     } catch (error: any) {
@@ -90,7 +103,7 @@ export default function LoginPage() {
           <p className="text-muted-foreground text-sm">Enterprise Digital Canteen Management</p>
         </div>
 
-        {DEMO_MODE && (
+        {showDemo && (
           <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-center text-sm dark:border-indigo-900 dark:bg-indigo-950/40">
             <p className="font-medium text-indigo-700 dark:text-indigo-300">Demo mode — no database needed</p>
             <p className="mt-1 text-xs text-indigo-600/80 dark:text-indigo-400/80">

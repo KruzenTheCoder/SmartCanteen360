@@ -68,7 +68,7 @@ export default function LoginScreen() {
                 <Utensils size={40} color="white" />
               </View>
               <Text className="text-2xl font-bold text-gray-900">
-                SmartCanteen 360
+                NetBite360
               </Text>
               <Text className="text-sm text-gray-500 mt-1">
                 Employee Mobile App

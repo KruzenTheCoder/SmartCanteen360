@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authApi } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
 
 export function Header() {
   const router = useRouter();
@@ -15,11 +17,15 @@ export function Header() {
 
   const handleLogout = async () => {
     try {
-      await authApi.logout();
+      if (isSupabaseConfigured) {
+        await createClient().auth.signOut();
+      } else {
+        await authApi.logout();
+        auth.clearTokens();
+      }
     } catch {
       // ignore network errors on logout
     } finally {
-      auth.clearTokens();
       router.push("/login");
       router.refresh();
     }

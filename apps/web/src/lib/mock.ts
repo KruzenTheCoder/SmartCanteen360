@@ -10,7 +10,7 @@ export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
 
 /** Demo credentials shown on the login screen. */
 export const DEMO_CREDENTIALS = {
-  email: "admin@smartcanteen.local",
+  email: "admin@netbite360.io",
   password: "Admin@12345",
 };
 

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useBrand } from "@/components/brand-provider";
 
 interface NavItem {
   label: string;
@@ -85,14 +86,20 @@ const NAV: { section: string; items: NavItem[] }[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const brand = useBrand();
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card lg:block">
       <div className="flex h-16 items-center gap-2 border-b px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 via-fuchsia-500 to-indigo-600 shadow-lg shadow-indigo-500/30">
-          <Utensils className="h-5 w-5 text-white" />
-        </div>
-        <span className="gradient-text text-lg font-bold tracking-tight">NetBite360</span>
+        {brand.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={brand.logoUrl} alt={brand.name} className="h-9 w-9 rounded-lg object-cover" />
+        ) : (
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 via-fuchsia-500 to-indigo-600 shadow-lg shadow-indigo-500/30">
+            <Utensils className="h-5 w-5 text-white" />
+          </div>
+        )}
+        <span className="gradient-text text-lg font-bold tracking-tight">{brand.name}</span>
       </div>
 
       <nav className="sc-scrollbar h-[calc(100vh-4rem)] space-y-6 overflow-y-auto px-4 py-6">

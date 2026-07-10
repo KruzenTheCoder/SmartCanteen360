@@ -1,5 +1,5 @@
 /**
- * SmartCanteen 360 — database seed.
+ * NetBite360 — database seed.
  *
  * Idempotent: safe to run repeatedly (uses upsert on natural keys). Seeds the
  * RBAC catalogue, a demo company/tenant, an admin user, reference data and a
@@ -59,7 +59,7 @@ async function seedCompany() {
     where: { slug: 'demo-corp' },
     update: {},
     create: {
-      name: 'Demo Corp Canteen',
+      name: 'NetBite360 Demo',
       slug: 'demo-corp',
       timezone: 'Africa/Johannesburg',
       currency: 'ZAR',
@@ -71,11 +71,11 @@ async function seedAdmin(companyId: string) {
   console.log('→ Seeding admin user…');
   const passwordHash = await bcrypt.hash('Admin@12345', 12);
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@smartcanteen.local' },
+    where: { email: 'admin@netbite360.io' },
     update: { companyId, status: 'ACTIVE' },
     create: {
       companyId,
-      email: 'admin@smartcanteen.local',
+      email: 'admin@netbite360.io',
       passwordHash,
       firstName: 'System',
       lastName: 'Administrator',
@@ -238,14 +238,14 @@ async function seedEmployees(
 }
 
 async function main() {
-  console.log('🌱  Seeding SmartCanteen 360…');
+  console.log('🌱  Seeding NetBite360…');
   await seedRbac();
   const company = await seedCompany();
   await seedAdmin(company.id);
   const { departments } = await seedReferenceData(company.id);
   await seedEmployees(company.id, departments);
   console.log('✅  Seed complete.');
-  console.log('    Admin login → admin@smartcanteen.local / Admin@12345');
+  console.log('    Admin login → admin@netbite360.io / Admin@12345');
 }
 
 main()

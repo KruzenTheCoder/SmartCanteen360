@@ -49,7 +49,7 @@ async function bootstrap() {
   // Swagger documentation (only in development)
   if (configService.get<string>('NODE_ENV') !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('SmartCanteen 360 API')
+      .setTitle('NetBite360 API')
       .setDescription('Enterprise Digital Canteen Management Platform')
       .setVersion('1.0.0')
       .addBearerAuth()
@@ -77,7 +77,7 @@ async function bootstrap() {
   const port = configService.get<number>('API_PORT', 4000);
   await app.listen(port);
 
-  console.log(`🚀 SmartCanteen 360 API running on port ${port}`);
+  console.log(`🚀 NetBite360 API running on port ${port}`);
   console.log(`📚 API Documentation: http://localhost:${port}/docs`);
 }
 

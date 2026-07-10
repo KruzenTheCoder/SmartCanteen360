@@ -4,6 +4,11 @@ import { jwtDecode } from "jwt-decode";
 
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
+import { BrandProvider } from "@/components/brand-provider";
+import { DEFAULT_BRAND, type Brand } from "@/lib/branding";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/server";
+import { getBrand } from "@/lib/supabase/tenant";
 
 interface TokenPayload {
   sub: string;
@@ -11,38 +16,42 @@ interface TokenPayload {
   exp: number;
 }
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Check authentication
-  const cookieStore = cookies();
-  const token = cookieStore.get("access_token")?.value;
+  let brand: Brand = DEFAULT_BRAND;
 
-  if (!token) {
-    redirect("/login");
-  }
-
-  // Verify token is not expired
-  try {
-    const decoded = jwtDecode<TokenPayload>(token);
-    if (decoded.exp * 1000 < Date.now()) {
+  if (isSupabaseConfigured) {
+    // Production: real Supabase Auth (middleware also guards these routes).
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
+    brand = await getBrand();
+  } else {
+    // Demo mode: verify the fake session cookie.
+    const token = cookies().get("access_token")?.value;
+    if (!token) redirect("/login");
+    try {
+      const decoded = jwtDecode<TokenPayload>(token);
+      if (decoded.exp * 1000 < Date.now()) redirect("/login");
+    } catch {
       redirect("/login");
     }
-  } catch {
-    redirect("/login");
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <div className="lg:pl-72">
-        <Header />
-        <main className="py-6 px-4 sm:px-6 lg:px-8">
-          {children}
-        </main>
+    <BrandProvider brand={brand}>
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="lg:pl-72">
+          <Header />
+          <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </BrandProvider>
   );
 }

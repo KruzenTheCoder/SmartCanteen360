@@ -52,7 +52,7 @@ export default function SettingsScreen() {
         </View>
         <View className="flex-row justify-between">
           <Text className="text-gray-500">App</Text>
-          <Text className="text-gray-800">SmartCanteen 360</Text>
+          <Text className="text-gray-800">NetBite360</Text>
         </View>
       </Card>
 
