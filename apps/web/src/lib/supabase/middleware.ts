@@ -38,7 +38,9 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = ["/login", "/forgot-password", "/reset-password", "/register"].some((p) =>
     path.startsWith(p),
   );
-  const isPublic = isAuthRoute || path === "/";
+  // API routes return their own JSON 401 — never redirect them to the login page.
+  const isApi = path.startsWith("/api");
+  const isPublic = isAuthRoute || path === "/" || isApi;
 
   // Not signed in and visiting a protected route → send to login.
   if (!user && !isPublic) {

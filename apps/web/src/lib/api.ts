@@ -1,7 +1,17 @@
 import { auth } from "./auth";
 import { DEMO_MODE, mockGet, mockLogin, mockPost } from "./mock";
+import { isSupabaseConfigured } from "./supabase/config";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+/**
+ * Data routing:
+ *  - Supabase configured  → internal Next route handlers at "/api" (production)
+ *  - else demo mode        → in-memory mock data
+ *  - else                  → legacy external API (NEXT_PUBLIC_API_URL)
+ */
+const useDemo = DEMO_MODE && !isSupabaseConfigured;
+const BASE = isSupabaseConfigured
+  ? "/api"
+  : process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 /** Small delay so demo mode feels like a real request (loading states show). */
 const demoDelay = () => new Promise((r) => setTimeout(r, 150));
@@ -62,20 +72,18 @@ function getHeaders(): Record<string, string> {
 
 export const api = {
   async get<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
-    if (DEMO_MODE) {
+    if (useDemo) {
       await demoDelay();
       return mockGet(endpoint) as T;
     }
-    const url = new URL(`${API_URL}${endpoint}`);
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          url.searchParams.append(key, value);
-        }
-      });
-    }
+    const qs = params
+      ? "?" +
+        new URLSearchParams(
+          Object.fromEntries(Object.entries(params).filter(([, v]) => v != null)),
+        ).toString()
+      : "";
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(`${BASE}${endpoint}${qs}`, {
       method: "GET",
       headers: getHeaders(),
       credentials: "include",
@@ -85,11 +93,11 @@ export const api = {
   },
 
   async post<T>(endpoint: string, body?: unknown): Promise<T> {
-    if (DEMO_MODE) {
+    if (useDemo) {
       await demoDelay();
       return mockPost(endpoint) as T;
     }
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${BASE}${endpoint}`, {
       method: "POST",
       headers: getHeaders(),
       credentials: "include",
@@ -100,7 +108,7 @@ export const api = {
   },
 
   async put<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${BASE}${endpoint}`, {
       method: "PUT",
       headers: getHeaders(),
       credentials: "include",
@@ -111,7 +119,7 @@ export const api = {
   },
 
   async patch<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${BASE}${endpoint}`, {
       method: "PATCH",
       headers: getHeaders(),
       credentials: "include",
@@ -122,7 +130,7 @@ export const api = {
   },
 
   async delete<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${BASE}${endpoint}`, {
       method: "DELETE",
       headers: getHeaders(),
       credentials: "include",
@@ -135,7 +143,7 @@ export const api = {
 // Convenience exports for common API calls
 export const authApi = {
   login: async (data: { email: string; password: string }) => {
-    if (DEMO_MODE) {
+    if (useDemo) {
       await demoDelay();
       return mockLogin(data.email, data.password);
     }
