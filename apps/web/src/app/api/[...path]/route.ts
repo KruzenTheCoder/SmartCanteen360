@@ -387,6 +387,42 @@ export async function POST(req: NextRequest, { params }: { params: { path?: stri
       return ok({ id: data.user?.id, email: body.email });
     }
 
+    // Employees: create + provision wallet / loyalty / QR card.
+    if (path === "employees") {
+      if (!companyId) return fail("No tenant in context", 400);
+      const { data, error } = await db.from("employees").insert(RESOURCES.employees.toInsert!(body, companyId)).select().single();
+      if (error) return fail(error.message, 400);
+      await provisionEmployees(db, [data.id]);
+      return ok(data);
+    }
+
+    // Bulk CSV import: { rows: [...] }
+    if (path === "employees/import") {
+      if (!companyId) return fail("No tenant in context", 400);
+      const rows: any[] = Array.isArray(body.rows) ? body.rows : [];
+      if (rows.length === 0) return fail("No rows to import", 400);
+      const { data, error } = await db
+        .from("employees")
+        .insert(rows.map((r) => RESOURCES.employees.toInsert!(r, companyId)))
+        .select("id");
+      if (error) return fail(error.message, 400);
+      const ids = (data ?? []).map((e: any) => e.id);
+      await provisionEmployees(db, ids);
+      return ok({ created: ids.length });
+    }
+
+    // Tenant settings upsert: { key, value }
+    if (path === "settings") {
+      if (!companyId) return fail("No tenant in context", 400);
+      const { data, error } = await db
+        .from("settings")
+        .upsert({ companyId, key: body.key, value: body.value ?? {} }, { onConflict: "companyId,key" })
+        .select()
+        .single();
+      if (error) return fail(error.message, 400);
+      return ok(data);
+    }
+
     // Generic resource create.
     const res = RESOURCES[segs[0] ?? ""];
     if (res && segs.length === 1 && res.toInsert) {
@@ -510,6 +546,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { path?: st
 }
 
 // ---- Helpers ---------------------------------------------------------------
+/** Give each new employee a wallet, loyalty account and QR card. */
+async function provisionEmployees(db: Db, ids: string[]) {
+  if (ids.length === 0) return;
+  await db.from("wallets").insert(ids.map((employeeId) => ({ employeeId, balance: 0 })));
+  await db.from("loyalty_accounts").insert(ids.map((employeeId) => ({ employeeId })));
+  await db.from("qr_cards").insert(
+    ids.map((employeeId) => ({ employeeId, code: crypto.randomUUID(), encryptedData: crypto.randomUUID() })),
+  );
+}
+
 async function usersList(db: Db, ctx: TenantContext) {
   const { data: profiles } = ctx.isSuperAdmin
     ? await db.from("profiles").select("*")

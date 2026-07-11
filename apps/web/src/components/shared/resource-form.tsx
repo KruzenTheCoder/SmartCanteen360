@@ -28,7 +28,8 @@ export interface Field {
 interface ResourceFormProps {
   endpoint: string;
   fields: Field[];
-  redirectTo: string;
+  /** Where to go after save. Omit to stay on the page (just refresh). */
+  redirectTo?: string;
   submitLabel?: string;
   method?: "post" | "patch";
   /** Prefill values (edit mode). */
@@ -96,7 +97,7 @@ export function ResourceForm({
     try {
       await api[method](endpoint, payload);
       toast.success("Saved successfully");
-      router.push(redirectTo as never);
+      if (redirectTo) router.push(redirectTo as never);
       router.refresh();
     } catch (err) {
       toast.error("Could not save", { description: (err as Error).message });

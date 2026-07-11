@@ -43,8 +43,10 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Employees" description="Manage staff, subsidies, wallets and loyalty.">
-        <Button variant="outline">
-          <Upload className="mr-2 h-4 w-4" /> Import
+        <Button asChild variant="outline">
+          <Link href="/employees/import">
+            <Upload className="mr-2 h-4 w-4" /> Import
+          </Link>
         </Button>
         <Button asChild className="bg-gradient-to-r from-violet-600 to-indigo-600">
           <Link href="/employees/new">
