@@ -6,6 +6,7 @@ import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TenantSwitcher } from "@/components/dashboard/tenant-switcher";
 import { authApi } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -39,6 +40,7 @@ export function Header() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <TenantSwitcher />
         <Button
           variant="ghost"
           size="icon"

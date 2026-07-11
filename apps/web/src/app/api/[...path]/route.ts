@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTenantContext, type TenantContext } from "@/lib/data/context";
+import { getTenantContext, ACTIVE_COMPANY_COOKIE, type TenantContext } from "@/lib/data/context";
 import { RESOURCES } from "@/lib/data/resources";
 
 export const dynamic = "force-dynamic";
@@ -14,9 +14,13 @@ const fail = (message: string, status = 400) => NextResponse.json({ message }, {
 const list = (data: any[], total?: number) =>
   ok({ data, pagination: { page: 1, pageSize: data.length, total: total ?? data.length, totalPages: 1 } });
 
-/** Apply tenant isolation unless the caller is a super admin. */
+/**
+ * Scope a query to the active tenant. Non-super users are pinned to their
+ * company; super admins are scoped to the tenant they've switched to, or see
+ * all tenants when none is selected (activeCompanyId === null).
+ */
 function scope(q: any, ctx: TenantContext) {
-  return ctx.isSuperAdmin || !ctx.companyId ? q : q.eq("companyId", ctx.companyId);
+  return ctx.activeCompanyId ? q.eq("companyId", ctx.activeCompanyId) : q;
 }
 
 const todayRange = () => {
@@ -87,6 +91,12 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
         });
       }
 
+      case "companies": {
+        const base = db.from("companies").select("id,name,slug,logoUrl,primaryColor").is("deletedAt", null).order("name");
+        const { data } = ctx.isSuperAdmin ? await base : await base.eq("id", ctx.companyId ?? "");
+        return ok(data ?? []);
+      }
+
       case "meals/categories":
         return ok((await scope(db.from("meal_categories").select("id,name"), ctx).order("sortOrder")).data ?? []);
 
@@ -117,7 +127,7 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
           .order("lifetimePoints", { ascending: false })
           .limit(50);
         const rows = (data ?? []).filter(
-          (r: any) => ctx.isSuperAdmin || r.employee?.companyId === ctx.companyId,
+          (r: any) => !ctx.activeCompanyId || r.employee?.companyId === ctx.activeCompanyId,
         );
         return ok(rows.slice(0, 10));
       }
@@ -312,11 +322,24 @@ export async function POST(req: NextRequest, { params }: { params: { path?: stri
   const path = segs.join("/");
   const db = createAdminClient();
   const body = await req.json().catch(() => ({}));
-  const companyId = ctx.companyId ?? body.companyId;
+  const companyId = ctx.activeCompanyId ?? ctx.companyId ?? body.companyId;
 
   try {
     // Auth no-ops (Supabase Auth handles these client-side).
     if (["auth/logout", "auth/forgot-password", "auth/reset-password"].includes(path)) return ok({ ok: true });
+
+    // Super-admin tenant switch: set/clear the active-company cookie.
+    if (path === "tenant/switch") {
+      if (!ctx.isSuperAdmin) return fail("Forbidden", 403);
+      const res = NextResponse.json({ ok: true });
+      const target = (body.companyId as string | undefined)?.trim();
+      if (target) {
+        res.cookies.set(ACTIVE_COMPANY_COOKIE, target, { httpOnly: true, sameSite: "lax", path: "/" });
+      } else {
+        res.cookies.delete(ACTIVE_COMPANY_COOKIE);
+      }
+      return res;
+    }
 
     // Generic resource create.
     const res = RESOURCES[segs[0] ?? ""];

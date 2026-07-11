@@ -1,37 +1,40 @@
-import { createClient } from "./server";
 import { isSupabaseConfigured } from "./config";
+import { createAdminClient } from "./admin";
+import { getTenantContext } from "@/lib/data/context";
 import { DEFAULT_BRAND, type Brand } from "../branding";
 
 /**
- * Resolve the signed-in user's tenant + role + white-label branding (server
- * side). Falls back to the default NetBite360 brand in demo mode.
+ * Resolve white-label branding for the shell (server side). Reflects the tenant
+ * a super admin has switched to; falls back to the platform brand in demo mode
+ * or when a super admin has no active tenant selected.
  */
 export async function getBrand(): Promise<Brand> {
   if (!isSupabaseConfigured) return DEFAULT_BRAND;
 
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return DEFAULT_BRAND;
+  const ctx = await getTenantContext();
+  if (!ctx) return DEFAULT_BRAND;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select('role, companyId, company:companies(name, logoUrl, primaryColor)')
-    .eq("id", user.id)
-    .single();
+  interface CompanyBrand {
+    name: string | null;
+    logoUrl: string | null;
+    primaryColor: string | null;
+  }
+  let company: CompanyBrand | null = null;
+  if (ctx.activeCompanyId) {
+    const { data } = await createAdminClient()
+      .from("companies")
+      .select("name, logoUrl, primaryColor")
+      .eq("id", ctx.activeCompanyId)
+      .single();
+    if (data) company = data as CompanyBrand;
+  }
 
-  const company = (profile?.company ?? null) as
-    | { name: string; logoUrl: string | null; primaryColor: string | null }
-    | null;
-
-  const role = (profile?.role as string) ?? "EMPLOYEE";
   return {
     name: company?.name ?? "NetBite360",
     logoUrl: company?.logoUrl ?? null,
     primaryColor: company?.primaryColor ?? "#4f46e5",
-    companyId: (profile?.companyId as string) ?? null,
-    role,
-    isSuperAdmin: role === "SUPER_ADMIN",
+    companyId: ctx.activeCompanyId,
+    role: ctx.role,
+    isSuperAdmin: ctx.isSuperAdmin,
   };
 }

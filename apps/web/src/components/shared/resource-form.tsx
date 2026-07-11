@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export interface Field {
   name: string;
@@ -57,6 +58,25 @@ export function ResourceForm({
 
   const set = (name: string, v: string) => setValues((s) => ({ ...s, [name]: v }));
 
+  const [uploading, setUploading] = useState<string | null>(null);
+  const uploadImage = async (name: string, file: File) => {
+    setUploading(name);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "images");
+      const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || "Upload failed");
+      set(name, json.url);
+      toast.success("Image uploaded");
+    } catch (e) {
+      toast.error("Upload failed", { description: (e as Error).message });
+    } finally {
+      setUploading(null);
+    }
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const missing = fields.filter((f) => f.required && !values[f.name]?.trim());
@@ -101,13 +121,35 @@ export function ResourceForm({
 
               {f.type === "image" ? (
                 <div className="space-y-3">
-                  <Input
-                    id={f.name}
-                    type="url"
-                    placeholder={f.placeholder ?? "https://…/photo.jpg"}
-                    value={values[f.name]}
-                    onChange={(e) => set(f.name, e.target.value)}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id={f.name}
+                      type="url"
+                      placeholder={f.placeholder ?? "https://…/photo.jpg"}
+                      value={values[f.name]}
+                      onChange={(e) => set(f.name, e.target.value)}
+                    />
+                    {isSupabaseConfigured ? (
+                      <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-medium hover:bg-muted">
+                        {uploading === f.name ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        <span className="hidden sm:inline">Upload</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploading === f.name}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void uploadImage(f.name, file);
+                          }}
+                        />
+                      </label>
+                    ) : null}
+                  </div>
                   <div className="relative aspect-[16/9] w-full max-w-sm overflow-hidden rounded-lg border bg-muted">
                     {values[f.name] ? (
                       // eslint-disable-next-line @next/next/no-img-element

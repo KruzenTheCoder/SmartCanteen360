@@ -1,17 +1,28 @@
 import "server-only";
 
+import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+/** Cookie a super admin sets to "act as" a specific tenant. */
+export const ACTIVE_COMPANY_COOKIE = "nb_active_company";
+
 export interface TenantContext {
   userId: string;
   email: string;
+  /** The user's home company (from their profile). */
   companyId: string | null;
   role: string;
   isSuperAdmin: boolean;
   employeeId: string | null;
+  /**
+   * The company data should be scoped to. For normal users this equals their
+   * home company. For a super admin it is the tenant they've switched to, or
+   * null meaning "all tenants".
+   */
+  activeCompanyId: string | null;
 }
 
 /**
@@ -55,12 +66,28 @@ export async function getTenantContext(req?: NextRequest): Promise<TenantContext
     .single();
 
   const role = (profile?.role as string) ?? "EMPLOYEE";
+  const isSuperAdmin = role === "SUPER_ADMIN";
+  const companyId = (profile?.companyId as string | null) ?? null;
+
+  // Super admins may switch tenants via a cookie; everyone else is pinned.
+  let activeCompanyId = companyId;
+  if (isSuperAdmin) {
+    let selected: string | null = null;
+    try {
+      selected = cookies().get(ACTIVE_COMPANY_COOKIE)?.value ?? null;
+    } catch {
+      selected = null;
+    }
+    activeCompanyId = selected || null; // null = all tenants
+  }
+
   return {
     userId,
     email,
-    companyId: (profile?.companyId as string | null) ?? null,
+    companyId,
     role,
-    isSuperAdmin: role === "SUPER_ADMIN",
+    isSuperAdmin,
     employeeId: (profile?.employeeId as string | null) ?? null,
+    activeCompanyId,
   };
 }
