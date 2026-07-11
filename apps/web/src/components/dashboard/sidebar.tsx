@@ -22,6 +22,7 @@ import {
   Shield,
   ScrollText,
   UserCog,
+  Building2,
   Utensils,
 } from "lucide-react";
 
@@ -84,9 +85,15 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ];
 
+const PLATFORM_SECTION = {
+  section: "Platform",
+  items: [{ label: "Tenants", href: "/tenants", icon: Building2 }],
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const brand = useBrand();
+  const nav = brand.isSuperAdmin ? [...NAV, PLATFORM_SECTION] : NAV;
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card lg:block">
@@ -103,7 +110,7 @@ export function Sidebar() {
       </div>
 
       <nav className="sc-scrollbar h-[calc(100vh-4rem)] space-y-6 overflow-y-auto px-4 py-6">
-        {NAV.map((group) => (
+        {nav.map((group) => (
           <div key={group.section}>
             <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {group.section}

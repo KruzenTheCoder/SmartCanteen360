@@ -16,7 +16,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 export interface Field {
   name: string;
   label: string;
-  type?: "text" | "email" | "number" | "textarea" | "select" | "image";
+  type?: "text" | "email" | "number" | "textarea" | "select" | "image" | "color" | "password";
   placeholder?: string;
   required?: boolean;
   options?: { label: string; value: string }[];
@@ -169,6 +169,17 @@ export function ResourceForm({
                   value={values[f.name]}
                   onChange={(e) => set(f.name, e.target.value)}
                 />
+              ) : f.type === "color" ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    aria-label={`${f.label} colour`}
+                    value={values[f.name] || "#4f46e5"}
+                    onChange={(e) => set(f.name, e.target.value)}
+                    className="h-10 w-14 cursor-pointer rounded border"
+                  />
+                  <Input value={values[f.name]} placeholder="#4f46e5" onChange={(e) => set(f.name, e.target.value)} />
+                </div>
               ) : f.type === "select" ? (
                 <select
                   id={f.name}

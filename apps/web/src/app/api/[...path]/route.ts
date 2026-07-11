@@ -295,6 +295,14 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
     // Special case: admin users list (profiles + auth emails)
     if (path === "users") return usersList(db, ctx);
 
+    // Single company (tenant management)
+    if (segs[0] === "companies" && segs.length === 2) {
+      if (!ctx.isSuperAdmin && segs[1] !== ctx.companyId) return fail("Forbidden", 403);
+      const { data, error } = await db.from("companies").select("*").eq("id", segs[1]).single();
+      if (error) return fail(error.message, 404);
+      return ok(data);
+    }
+
     // Generic single record: /resource/:id
     const singleRes = RESOURCES[segs[0] ?? ""];
     if (singleRes && segs.length === 2) {
@@ -339,6 +347,44 @@ export async function POST(req: NextRequest, { params }: { params: { path?: stri
         res.cookies.delete(ACTIVE_COMPANY_COOKIE);
       }
       return res;
+    }
+
+    // ---- Tenant management (super admin) ---------------------------------
+    if (path === "companies") {
+      if (!ctx.isSuperAdmin) return fail("Forbidden", 403);
+      const id = crypto.randomUUID();
+      const slug = String(body.slug || body.name || id)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      const { data, error } = await db.from("companies").insert({
+        id,
+        name: body.name,
+        slug,
+        primaryColor: body.primaryColor || "#4f46e5",
+        secondaryColor: body.secondaryColor || "#7c3aed",
+        logoUrl: body.logoUrl || null,
+        currency: body.currency || "ZAR",
+        timezone: body.timezone || "Africa/Johannesburg",
+        supportEmail: body.supportEmail || null,
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      }).select().single();
+      if (error) return fail(error.message, 400);
+      return ok(data);
+    }
+
+    // Invite a tenant's first admin: /companies/:id/invite
+    if (segs[0] === "companies" && segs[2] === "invite" && segs[1]) {
+      if (!ctx.isSuperAdmin) return fail("Forbidden", 403);
+      const { data, error } = await db.auth.admin.createUser({
+        email: body.email,
+        password: body.password,
+        email_confirm: true,
+        user_metadata: { companyId: segs[1], role: body.role || "COMPANY_ADMIN", fullName: body.fullName },
+      });
+      if (error) return fail(error.message, 400);
+      return ok({ id: data.user?.id, email: body.email });
     }
 
     // Generic resource create.
@@ -398,6 +444,32 @@ export async function PATCH(req: NextRequest, { params }: { params: { path?: str
   if (!ctx) return fail("Unauthorized", 401);
   const segs = params.path ?? [];
   const db = createAdminClient();
+
+  // Company branding update (super admin, or company admin for their own tenant).
+  if (segs[0] === "companies" && segs.length === 2) {
+    if (!ctx.isSuperAdmin && segs[1] !== ctx.companyId) return fail("Forbidden", 403);
+    const b = await req.json().catch(() => ({}));
+    const patch = Object.fromEntries(
+      Object.entries({
+        name: b.name,
+        logoUrl: b.logoUrl,
+        primaryColor: b.primaryColor,
+        secondaryColor: b.secondaryColor,
+        supportEmail: b.supportEmail,
+        currency: b.currency,
+        timezone: b.timezone,
+        updatedAt: new Date().toISOString(),
+      }).filter(([, v]) => v !== undefined),
+    );
+    try {
+      const { data, error } = await db.from("companies").update(patch).eq("id", segs[1]).select().single();
+      if (error) return fail(error.message, 400);
+      return ok(data);
+    } catch (e) {
+      return fail((e as Error).message, 500);
+    }
+  }
+
   const res = RESOURCES[segs[0] ?? ""];
   if (!res || segs.length !== 2) return fail("Not found", 404);
 
