@@ -1,13 +1,11 @@
 import { create } from "zustand";
-import { jwtDecode } from "jwt-decode";
 
-import { api, tokenStore, apiError } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
+import { apiError } from "@/lib/api";
 
 interface AuthUser {
   id: string;
   email: string;
-  roles: string[];
-  companyId?: string;
 }
 
 interface AuthState {
@@ -20,23 +18,8 @@ interface AuthState {
   logout: () => Promise<void>;
 }
 
-interface TokenPayload {
-  sub: string;
-  email: string;
-  roles?: string[];
-  companyId?: string;
-  exp: number;
-}
-
-function userFromToken(token: string): AuthUser | null {
-  try {
-    const p = jwtDecode<TokenPayload>(token);
-    if (p.exp * 1000 < Date.now()) return null;
-    return { id: p.sub, email: p.email, roles: p.roles ?? [], companyId: p.companyId };
-  } catch {
-    return null;
-  }
-}
+const toUser = (session: { user: { id: string; email?: string } } | null): AuthUser | null =>
+  session ? { id: session.user.id, email: session.user.email ?? "" } : null;
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -44,21 +27,21 @@ export const useAuthStore = create<AuthState>((set) => ({
   isBootstrapping: true,
   error: null,
 
-  /** Restore session from secure storage on app launch. */
+  /** Restore the Supabase session on launch and subscribe to auth changes. */
   async bootstrap() {
-    const token = await tokenStore.getAccess();
-    set({ user: token ? userFromToken(token) : null, isBootstrapping: false });
+    const { data } = await supabase.auth.getSession();
+    set({ user: toUser(data.session), isBootstrapping: false });
+    supabase.auth.onAuthStateChange((_event, session) => {
+      set({ user: toUser(session) });
+    });
   },
 
   async login(email, password) {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.post<{ accessToken: string; refreshToken?: string }>(
-        "/auth/login",
-        { email, password },
-      );
-      await tokenStore.set(data.accessToken, data.refreshToken);
-      set({ user: userFromToken(data.accessToken), isLoading: false });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      set({ isLoading: false });
     } catch (e) {
       set({ isLoading: false, error: apiError(e) });
       throw e;
@@ -66,12 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   async logout() {
-    try {
-      await api.post("/auth/logout", {});
-    } catch {
-      // ignore
-    }
-    await tokenStore.clear();
+    await supabase.auth.signOut();
     set({ user: null });
   },
 }));
