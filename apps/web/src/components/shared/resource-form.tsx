@@ -30,6 +30,8 @@ interface ResourceFormProps {
   redirectTo: string;
   submitLabel?: string;
   method?: "post" | "patch";
+  /** Prefill values (edit mode). */
+  initial?: Record<string, unknown>;
 }
 
 /** Generic create/edit form: renders fields, posts JSON, toasts and redirects. */
@@ -39,10 +41,17 @@ export function ResourceForm({
   redirectTo,
   submitLabel = "Save",
   method = "post",
+  initial,
 }: ResourceFormProps) {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((f) => [f.name, f.defaultValue != null ? String(f.defaultValue) : ""])),
+    Object.fromEntries(
+      fields.map((f) => {
+        const fromInitial = initial?.[f.name];
+        const val = fromInitial != null ? fromInitial : f.defaultValue;
+        return [f.name, val != null ? String(val) : ""];
+      }),
+    ),
   );
   const [submitting, setSubmitting] = useState(false);
 

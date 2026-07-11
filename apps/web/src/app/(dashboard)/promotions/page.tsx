@@ -44,6 +44,7 @@ export default function PromotionsPage() {
         queryKey="promotions"
         endpoint="/promotions"
         columns={columns}
+        resource="promotions"
         emptyTitle="No promotions yet"
         emptyDescription="Create discount rules, combos and campaigns."
       />

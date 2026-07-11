@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, UtensilsCrossed, Flame, Beef, Star, TrendingUp } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Plus, UtensilsCrossed, Flame, Beef, Star, TrendingUp, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Card } from "@/components/ui/card";
@@ -10,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TableSkeleton, EmptyState } from "@/components/shared/query-states";
 import { useList } from "@/lib/hooks";
+import { api } from "@/lib/api";
 import { formatCurrency, cn } from "@/lib/utils";
 
 interface Meal {
@@ -47,6 +50,18 @@ function StatCard({ label, value, icon: Icon, accent }: { label: string; value: 
 export default function MealsPage() {
   const { data, isLoading, isError } = useList<Meal>("meals", "/meals");
   const meals = data?.data ?? [];
+  const qc = useQueryClient();
+
+  const deleteMeal = async (id: string) => {
+    if (!window.confirm("Delete this meal?")) return;
+    try {
+      await api.delete(`/meals/${id}`);
+      toast.success("Meal deleted");
+      await qc.invalidateQueries({ queryKey: ["meals"] });
+    } catch (e) {
+      toast.error("Could not delete", { description: (e as Error).message });
+    }
+  };
 
   const published = meals.filter((m) => m.status === "PUBLISHED").length;
   const avgPrice = meals.length ? meals.reduce((s, m) => s + Number(m.retailPrice), 0) / meals.length : 0;
@@ -146,9 +161,14 @@ export default function MealsPage() {
                       Subsidised from{" "}
                       <span className="font-semibold text-foreground">{formatCurrency(Number(meal.subsidyPrice))}</span>
                     </span>
-                    <Button asChild size="sm" variant="ghost" className="h-7 text-indigo-600 hover:text-indigo-700">
-                      <Link href="/meals/new">Edit</Link>
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button asChild size="sm" variant="ghost" className="h-7 text-indigo-600 hover:text-indigo-700">
+                        <Link href={`/meals/${meal.id}/edit`}>Edit</Link>
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deleteMeal(meal.id)} aria-label="Delete meal">
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </Card>

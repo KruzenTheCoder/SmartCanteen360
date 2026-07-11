@@ -54,6 +54,7 @@ export default function InventoryPage() {
         queryKey="inventory"
         endpoint="/inventory"
         columns={columns}
+        resource="inventory"
         emptyTitle="No products yet"
         emptyDescription="Add inventory products to start tracking stock."
       />

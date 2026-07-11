@@ -22,13 +22,16 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 3) Profiles: link auth.users -> company + role -----------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  "companyId" TEXT REFERENCES public.companies(id) ON DELETE SET NULL,
-  role        public.app_role NOT NULL DEFAULT 'EMPLOYEE',
-  "fullName"  TEXT,
-  "isActive"  BOOLEAN NOT NULL DEFAULT true,
-  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+  id           UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  "companyId"  TEXT REFERENCES public.companies(id) ON DELETE SET NULL,
+  "employeeId" TEXT REFERENCES public.employees(id) ON DELETE SET NULL,
+  role         public.app_role NOT NULL DEFAULT 'EMPLOYEE',
+  "fullName"   TEXT,
+  "isActive"   BOOLEAN NOT NULL DEFAULT true,
+  "createdAt"  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- for re-runs on an existing profiles table
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "employeeId" TEXT REFERENCES public.employees(id) ON DELETE SET NULL;
 
 -- 4) Helper functions used by RLS --------------------------------------------
 CREATE OR REPLACE FUNCTION public.current_company_id()
@@ -58,10 +61,11 @@ CREATE POLICY profiles_self_update ON public.profiles
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO public.profiles (id, "companyId", role, "fullName")
+  INSERT INTO public.profiles (id, "companyId", "employeeId", role, "fullName")
   VALUES (
     NEW.id,
     NULLIF(NEW.raw_user_meta_data->>'companyId','')::TEXT,
+    NULLIF(NEW.raw_user_meta_data->>'employeeId','')::TEXT,
     COALESCE((NEW.raw_user_meta_data->>'role')::public.app_role, 'EMPLOYEE'),
     NEW.raw_user_meta_data->>'fullName'
   )

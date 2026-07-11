@@ -36,6 +36,7 @@ export default function SuppliersPage() {
         queryKey="suppliers"
         endpoint="/suppliers"
         columns={columns}
+        resource="suppliers"
         emptyTitle="No suppliers yet"
         emptyDescription="Add suppliers to raise purchase orders and receive stock."
       />

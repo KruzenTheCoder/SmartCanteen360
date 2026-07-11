@@ -57,6 +57,7 @@ export default function EmployeesPage() {
         queryKey="employees"
         endpoint="/employees"
         columns={columns}
+        resource="employees"
         emptyTitle="No employees yet"
         emptyDescription="Add employees individually or bulk-import from CSV."
       />

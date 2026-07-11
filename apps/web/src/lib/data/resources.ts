@@ -61,6 +61,16 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       capacity: b.capacity ? num(b.capacity) : null,
       status: b.status || "DRAFT",
     }),
+    toUpdate: (b) => ({
+      name: b.name,
+      description: b.description,
+      imageUrl: b.imageUrl,
+      status: b.status,
+      ...(b.costPrice !== undefined ? { costPrice: num(b.costPrice) } : {}),
+      ...(b.retailPrice !== undefined ? { retailPrice: num(b.retailPrice) } : {}),
+      ...(b.subsidyPrice !== undefined ? { subsidyPrice: num(b.subsidyPrice) } : {}),
+      ...(b.capacity !== undefined ? { capacity: b.capacity ? num(b.capacity) : null } : {}),
+    }),
   },
 
   inventory: {
@@ -78,6 +88,13 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       reorderLevel: num(b.reorderLevel),
       unitCost: num(b.unitCost),
     }),
+    toUpdate: (b) => ({
+      name: b.name,
+      unit: b.unit,
+      barcode: b.barcode,
+      ...(b.reorderLevel !== undefined ? { reorderLevel: num(b.reorderLevel) } : {}),
+      ...(b.unitCost !== undefined ? { unitCost: num(b.unitCost) } : {}),
+    }),
   },
 
   suppliers: {
@@ -94,6 +111,13 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       phone: b.phone || null,
       address: b.address || null,
     }),
+    toUpdate: (b) => ({
+      name: b.name,
+      contactName: b.contactName,
+      email: b.email,
+      phone: b.phone,
+      address: b.address,
+    }),
   },
 
   promotions: {
@@ -109,6 +133,12 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       rules: b.rules ?? {},
       priority: num(b.priority),
       isActive: true,
+    }),
+    toUpdate: (b) => ({
+      name: b.name,
+      type: b.type,
+      ...(b.priority !== undefined ? { priority: num(b.priority) } : {}),
+      ...(b.isActive !== undefined ? { isActive: Boolean(b.isActive) } : {}),
     }),
   },
 

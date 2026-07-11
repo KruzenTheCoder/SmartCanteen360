@@ -31,7 +31,7 @@ const todayRange = () => {
 // GET
 // ============================================================================
 export async function GET(req: NextRequest, { params }: { params: { path?: string[] } }) {
-  const ctx = await getTenantContext();
+  const ctx = await getTenantContext(req);
   if (!ctx) return fail("Unauthorized", 401);
 
   const segs = params.path ?? [];
@@ -59,15 +59,31 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
     switch (path) {
       case "auth/me": {
         const { data: p } = await db.from("profiles").select("fullName, role, companyId").eq("id", ctx.userId).single();
-        const [first, ...rest] = (p?.fullName ?? ctx.email).split(" ");
+        let employee: any = null;
+        let first = (p?.fullName ?? ctx.email).split(" ")[0] ?? "";
+        let last = (p?.fullName ?? "").split(" ").slice(1).join(" ");
+        if (ctx.employeeId) {
+          const { data: emp } = await db
+            .from("employees")
+            .select(
+              "id,employeeNumber,firstName,lastName,department:departments(name),wallet:wallets(balance),loyaltyAccount:loyalty_accounts(pointsBalance,lifetimePoints,tier),qrCard:qr_cards(code,isActive)",
+            )
+            .eq("id", ctx.employeeId)
+            .single();
+          if (emp) {
+            employee = emp;
+            first = emp.firstName ?? first;
+            last = emp.lastName ?? last;
+          }
+        }
         return ok({
           id: ctx.userId,
           email: ctx.email,
-          firstName: first ?? "",
-          lastName: rest.join(" "),
+          firstName: first,
+          lastName: last,
           role: p?.role ?? ctx.role,
           companyId: p?.companyId ?? ctx.companyId,
-          employee: null,
+          employee,
         });
       }
 
@@ -117,8 +133,16 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
         return ok(count ?? 0);
       }
 
-      case "bookings/me":
-        return list([]); // employees (mobile) resolve their own; admin uses /bookings
+      case "bookings/me": {
+        if (!ctx.employeeId) return list([]);
+        const { data } = await db
+          .from("bookings")
+          .select("*, schedule:meal_schedules(serviceDate, meal:meals(name))")
+          .eq("employeeId", ctx.employeeId)
+          .order("createdAt", { ascending: false })
+          .limit(50);
+        return list(data ?? []);
+      }
 
       case "meal-schedules": {
         const from = qp.get("from");
@@ -156,20 +180,23 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
 
       case "analytics/dashboard": {
         const { start, end } = todayRange();
-        const [emp, meals, pos, inv] = await Promise.all([
+        const [emp, meals, pos, inv, mealsToday, collected, upcoming] = await Promise.all([
           scope(db.from("employees").select("id", { count: "exact", head: true }), ctx).is("deletedAt", null).eq("status", "ACTIVE"),
           scope(db.from("meals").select("id", { count: "exact", head: true }), ctx).is("deletedAt", null),
           scope(db.from("pos_transactions").select("total"), ctx).eq("status", "COMPLETED").gte("createdAt", start).lt("createdAt", end),
           scope(db.from("inventory_products").select("quantityOnHand,unitCost"), ctx).is("deletedAt", null),
+          scope(db.from("bookings").select("id", { count: "exact", head: true }), ctx).gte("createdAt", start).lt("createdAt", end),
+          scope(db.from("bookings").select("id", { count: "exact", head: true }), ctx).eq("status", "COLLECTED").gte("collectedAt", start).lt("collectedAt", end),
+          scope(db.from("bookings").select("id", { count: "exact", head: true }), ctx).eq("status", "CONFIRMED"),
         ]);
         const revenueToday = (pos.data ?? []).reduce((s: number, t: any) => s + Number(t.total), 0);
         const inventoryValue = (inv.data ?? []).reduce((s: number, p: any) => s + Number(p.quantityOnHand) * Number(p.unitCost), 0);
         return ok({
-          mealsToday: 0,
-          collectedToday: 0,
+          mealsToday: mealsToday.count ?? 0,
+          collectedToday: collected.count ?? 0,
           revenueToday,
           inventoryValue,
-          upcomingBookings: 0,
+          upcomingBookings: upcoming.count ?? 0,
           activeEmployees: emp.count ?? 0,
           publishedMeals: meals.count ?? 0,
         });
@@ -189,9 +216,40 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
         return ok([...buckets.entries()].map(([date, revenue]) => ({ date, revenue })).sort((a, b) => a.date.localeCompare(b.date)));
       }
 
-      case "analytics/popular-meals":
-      case "analytics/department-usage":
-        return ok([]);
+      case "analytics/popular-meals": {
+        const { data } = await scope(
+          db.from("bookings").select("quantity, schedule:meal_schedules(meal:meals(name))"),
+          ctx,
+        ).limit(2000);
+        const counts = new Map<string, number>();
+        (data ?? []).forEach((b: any) => {
+          const name = b.schedule?.meal?.name;
+          if (name) counts.set(name, (counts.get(name) ?? 0) + (b.quantity ?? 1));
+        });
+        return ok(
+          [...counts.entries()]
+            .map(([name, bookings]) => ({ name, bookings }))
+            .sort((a, b) => b.bookings - a.bookings)
+            .slice(0, 10),
+        );
+      }
+
+      case "analytics/department-usage": {
+        const { data } = await scope(
+          db.from("bookings").select("quantity, employee:employees(department:departments(name))"),
+          ctx,
+        ).limit(2000);
+        const counts = new Map<string, number>();
+        (data ?? []).forEach((b: any) => {
+          const name = b.employee?.department?.name ?? "Unassigned";
+          counts.set(name, (counts.get(name) ?? 0) + (b.quantity ?? 1));
+        });
+        return ok(
+          [...counts.entries()]
+            .map(([department, bookings]) => ({ department, bookings }))
+            .sort((a, b) => b.bookings - a.bookings),
+        );
+      }
 
       default:
         break;
@@ -227,6 +285,16 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
     // Special case: admin users list (profiles + auth emails)
     if (path === "users") return usersList(db, ctx);
 
+    // Generic single record: /resource/:id
+    const singleRes = RESOURCES[segs[0] ?? ""];
+    if (singleRes && segs.length === 2) {
+      let q = scope(db.from(singleRes.table).select(singleRes.select), ctx).eq("id", segs[1]);
+      if (singleRes.softDelete) q = q.is("deletedAt", null);
+      const { data, error } = await q.single();
+      if (error) return fail(error.message, 404);
+      return ok(data);
+    }
+
     return list([]); // unknown → empty so the UI shows an empty state
   } catch (e) {
     return fail((e as Error).message, 500);
@@ -237,7 +305,7 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
 // POST
 // ============================================================================
 export async function POST(req: NextRequest, { params }: { params: { path?: string[] } }) {
-  const ctx = await getTenantContext();
+  const ctx = await getTenantContext(req);
   if (!ctx) return fail("Unauthorized", 401);
 
   const segs = params.path ?? [];
@@ -294,6 +362,53 @@ export async function POST(req: NextRequest, { params }: { params: { path?: stri
     if (path === "pos/checkout") return posCheckout(db, ctx, body);
 
     return ok({ ok: true });
+  } catch (e) {
+    return fail((e as Error).message, 500);
+  }
+}
+
+// ============================================================================
+// PATCH — update a resource by id
+// ============================================================================
+export async function PATCH(req: NextRequest, { params }: { params: { path?: string[] } }) {
+  const ctx = await getTenantContext(req);
+  if (!ctx) return fail("Unauthorized", 401);
+  const segs = params.path ?? [];
+  const db = createAdminClient();
+  const res = RESOURCES[segs[0] ?? ""];
+  if (!res || segs.length !== 2) return fail("Not found", 404);
+
+  const body = await req.json().catch(() => ({}));
+  const shape = res.toUpdate ? res.toUpdate(body) : body;
+  const patch = Object.fromEntries(Object.entries(shape).filter(([, v]) => v !== undefined));
+
+  try {
+    const { data, error } = await scope(db.from(res.table).update(patch), ctx).eq("id", segs[1]).select().single();
+    if (error) return fail(error.message, 400);
+    return ok(data);
+  } catch (e) {
+    return fail((e as Error).message, 500);
+  }
+}
+
+// ============================================================================
+// DELETE — soft-delete (or hard delete) a resource by id
+// ============================================================================
+export async function DELETE(req: NextRequest, { params }: { params: { path?: string[] } }) {
+  const ctx = await getTenantContext(req);
+  if (!ctx) return fail("Unauthorized", 401);
+  const segs = params.path ?? [];
+  const db = createAdminClient();
+  const res = RESOURCES[segs[0] ?? ""];
+  if (!res || segs.length !== 2) return fail("Not found", 404);
+
+  try {
+    const q = res.softDelete
+      ? scope(db.from(res.table).update({ deletedAt: new Date().toISOString() }), ctx)
+      : scope(db.from(res.table).delete(), ctx);
+    const { error } = await q.eq("id", segs[1]);
+    if (error) return fail(error.message, 400);
+    return ok({ id: segs[1], deleted: true });
   } catch (e) {
     return fail((e as Error).message, 500);
   }
