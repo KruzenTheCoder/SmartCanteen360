@@ -50,6 +50,7 @@ export default function UsersPage() {
         queryKey="users"
         endpoint="/users"
         columns={columns}
+        resource="users"
         emptyTitle="No users yet"
         emptyDescription="Invite administrators and staff to the portal."
       />

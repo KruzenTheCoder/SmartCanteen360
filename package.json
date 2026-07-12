@@ -16,6 +16,7 @@
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "smoke": "node scripts/smoke-test.mjs",
     "db:generate": "pnpm --filter @smartcanteen/database generate",
     "db:migrate": "pnpm --filter @smartcanteen/database migrate:dev",
     "db:migrate:deploy": "pnpm --filter @smartcanteen/database migrate:deploy",

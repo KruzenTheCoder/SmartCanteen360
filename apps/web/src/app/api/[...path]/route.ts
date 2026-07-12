@@ -185,8 +185,40 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
         );
       }
 
-      case "kitchen/queue":
-        return ok([]);
+      case "kitchen/queue": {
+        const date = qp.get("date") ?? new Date().toISOString().slice(0, 10);
+        const { data: schedules } = await scope(db.from("meal_schedules").select("id"), ctx).eq("serviceDate", date);
+        const ids = (schedules ?? []).map((s: any) => s.id);
+        if (ids.length === 0) return ok([]);
+        const { data } = await db
+          .from("bookings")
+          .select("*, employee:employees(employeeNumber,firstName,lastName), schedule:meal_schedules(meal:meals(name))")
+          .in("scheduleId", ids)
+          .eq("status", "CONFIRMED")
+          .order("createdAt", { ascending: true });
+        return ok(data ?? []);
+      }
+
+      case "analytics/waste": {
+        const since = new Date();
+        since.setDate(since.getDate() - 30);
+        const { data } = await scope(db.from("waste_records").select("reason,quantity,estimatedCost"), ctx).gte(
+          "recordedAt",
+          since.toISOString(),
+        );
+        const byReason = new Map<string, { cost: number; quantity: number }>();
+        (data ?? []).forEach((w: any) => {
+          const cur = byReason.get(w.reason) ?? { cost: 0, quantity: 0 };
+          cur.cost += Number(w.estimatedCost ?? 0);
+          cur.quantity += Number(w.quantity ?? 0);
+          byReason.set(w.reason, cur);
+        });
+        return ok(
+          [...byReason.entries()]
+            .map(([reason, v]) => ({ reason, cost: Math.round(v.cost * 100) / 100, quantity: v.quantity }))
+            .sort((a, b) => b.cost - a.cost),
+        );
+      }
 
       case "analytics/dashboard": {
         const { start, end } = todayRange();
@@ -294,6 +326,23 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
 
     // Special case: admin users list (profiles + auth emails)
     if (path === "users") return usersList(db, ctx);
+
+    // Single user (profile + auth email) for the edit page
+    if (segs[0] === "users" && segs.length === 2) {
+      const { data: p } = await db.from("profiles").select("*").eq("id", segs[1]).single();
+      if (!ctx.isSuperAdmin && (p as any)?.companyId !== ctx.companyId) return fail("Forbidden", 403);
+      const { data: u } = await db.auth.admin.getUserById(segs[1]!);
+      const [first, ...rest] = ((p as any)?.fullName ?? "").split(" ");
+      return ok({
+        id: segs[1],
+        email: u.user?.email ?? "",
+        firstName: first ?? "",
+        lastName: rest.join(" "),
+        fullName: (p as any)?.fullName ?? "",
+        role: (p as any)?.role ?? "EMPLOYEE",
+        status: (p as any)?.isActive ? "ACTIVE" : "DISABLED",
+      });
+    }
 
     // Single company (tenant management)
     if (segs[0] === "companies" && segs.length === 2) {
@@ -481,6 +530,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { path?: str
   const segs = params.path ?? [];
   const db = createAdminClient();
 
+  // User role/status update (super admin, or company admin for their own tenant).
+  if (segs[0] === "users" && segs.length === 2) {
+    const b = await req.json().catch(() => ({}));
+    const { data: p } = await db.from("profiles").select("companyId").eq("id", segs[1]).single();
+    if (!ctx.isSuperAdmin && (p as any)?.companyId !== ctx.companyId) return fail("Forbidden", 403);
+    const patch: Record<string, unknown> = {};
+    if (b.role) patch.role = b.role;
+    if (b.status) patch.isActive = b.status === "ACTIVE";
+    if (b.fullName !== undefined) patch.fullName = b.fullName;
+    try {
+      const { error } = await db.from("profiles").update(patch).eq("id", segs[1]);
+      if (error) return fail(error.message, 400);
+      return ok({ id: segs[1], ...patch });
+    } catch (e) {
+      return fail((e as Error).message, 500);
+    }
+  }
+
   // Company branding update (super admin, or company admin for their own tenant).
   if (segs[0] === "companies" && segs.length === 2) {
     if (!ctx.isSuperAdmin && segs[1] !== ctx.companyId) return fail("Forbidden", 403);
@@ -530,6 +597,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { path?: st
   if (!ctx) return fail("Unauthorized", 401);
   const segs = params.path ?? [];
   const db = createAdminClient();
+
+  // Deactivate a user (soft) rather than deleting the auth account.
+  if (segs[0] === "users" && segs.length === 2) {
+    const { data: p } = await db.from("profiles").select("companyId").eq("id", segs[1]).single();
+    if (!ctx.isSuperAdmin && (p as any)?.companyId !== ctx.companyId) return fail("Forbidden", 403);
+    const { error } = await db.from("profiles").update({ isActive: false }).eq("id", segs[1]);
+    if (error) return fail(error.message, 400);
+    return ok({ id: segs[1], deleted: true });
+  }
+
   const res = RESOURCES[segs[0] ?? ""];
   if (!res || segs.length !== 2) return fail("Not found", 404);
 

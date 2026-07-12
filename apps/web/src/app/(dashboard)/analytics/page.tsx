@@ -39,6 +39,10 @@ export default function AnalyticsPage() {
   const { data: summary } = useResource<Summary>("analytics-summary", "/analytics/dashboard");
   const { data: revenue } = useResource<RevenuePoint[]>("analytics-revenue", "/analytics/revenue-trend");
   const { data: meals } = useResource<PopularMeal[]>("analytics-popular", "/analytics/popular-meals");
+  const { data: dept } = useResource<{ department: string; bookings: number }[]>("analytics-dept", "/analytics/department-usage");
+  const { data: waste } = useResource<{ reason: string; cost: number }[]>("analytics-waste", "/analytics/waste");
+
+  const wasteCost = (waste ?? []).reduce((s, w) => s + Number(w.cost), 0);
 
   const cards = [
     { label: "Revenue today", value: formatCurrency(summary?.revenueToday ?? 0) },
@@ -47,6 +51,7 @@ export default function AnalyticsPage() {
     { label: "Inventory value", value: formatCurrency(summary?.inventoryValue ?? 0) },
     { label: "Upcoming bookings", value: summary?.upcomingBookings ?? 0 },
     { label: "Active employees", value: summary?.activeEmployees ?? 0 },
+    { label: "Waste (30d)", value: formatCurrency(wasteCost) },
   ];
 
   return (
@@ -94,6 +99,42 @@ export default function AnalyticsPage() {
                 <YAxis fontSize={12} />
                 <Tooltip />
                 <Bar dataKey="bookings" fill="hsl(var(--sc-purple))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Department usage</CardTitle>
+          </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dept ?? []}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="department" fontSize={11} interval={0} angle={-15} textAnchor="end" height={60} />
+                <YAxis fontSize={12} />
+                <Tooltip />
+                <Bar dataKey="bookings" fill="hsl(var(--sc-blue))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Waste by reason (30d)</CardTitle>
+          </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={waste ?? []}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="reason" fontSize={11} interval={0} angle={-15} textAnchor="end" height={60} tickFormatter={(v) => String(v).replace(/_/g, " ")} />
+                <YAxis fontSize={12} />
+                <Tooltip />
+                <Bar dataKey="cost" fill="hsl(var(--sc-red))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

@@ -54,6 +54,7 @@ export default function BookingsPage() {
         queryKey="bookings"
         endpoint="/bookings"
         columns={columns}
+        resource="bookings"
         emptyTitle="No bookings yet"
         emptyDescription="Bookings placed by employees will appear here."
       />

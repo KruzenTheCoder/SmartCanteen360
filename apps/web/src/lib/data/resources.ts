@@ -142,6 +142,19 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     }),
   },
 
+  bookings: {
+    table: "bookings",
+    select:
+      "*, employee:employees(employeeNumber,firstName,lastName), schedule:meal_schedules(serviceDate, meal:meals(name))",
+    orderBy: { column: "createdAt", ascending: false },
+    softDelete: false,
+    toUpdate: (b) => ({
+      status: b.status,
+      ...(b.status === "COLLECTED" ? { collectedAt: new Date().toISOString() } : {}),
+      ...(b.status === "CANCELLED" ? { cancelledAt: new Date().toISOString() } : {}),
+    }),
+  },
+
   notifications: {
     table: "notifications",
     select: "*",
