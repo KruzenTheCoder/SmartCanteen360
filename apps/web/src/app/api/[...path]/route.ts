@@ -11,8 +11,39 @@ type Db = ReturnType<typeof createAdminClient>;
 
 const ok = (data: unknown) => NextResponse.json(data);
 const fail = (message: string, status = 400) => NextResponse.json({ message }, { status });
-const list = (data: any[], total?: number) =>
-  ok({ data, pagination: { page: 1, pageSize: data.length, total: total ?? data.length, totalPages: 1 } });
+const list = (data: any[], total?: number, page = 1, pageSize = data.length || 1) =>
+  ok({
+    data,
+    pagination: {
+      page,
+      pageSize,
+      total: total ?? data.length,
+      totalPages: Math.max(1, Math.ceil((total ?? data.length) / (pageSize || 1))),
+    },
+  });
+
+/** Write an audit-log entry (best effort — never blocks the mutation). */
+async function audit(
+  db: Db,
+  ctx: TenantContext,
+  action: string,
+  entity: string,
+  entityId?: string,
+  after?: unknown,
+) {
+  try {
+    await db.from("audit_logs").insert({
+      companyId: ctx.activeCompanyId ?? ctx.companyId ?? null,
+      userId: ctx.userId,
+      action,
+      entity,
+      entityId: entityId ?? null,
+      after: after ?? null,
+    });
+  } catch {
+    // auditing must not break the request
+  }
+}
 
 /**
  * Scope a query to the active tenant. Non-super users are pinned to their
@@ -22,6 +53,17 @@ const list = (data: any[], total?: number) =>
 function scope(q: any, ctx: TenantContext) {
   return ctx.activeCompanyId ? q.eq("companyId", ctx.activeCompanyId) : q;
 }
+
+const round = (n: number) => Math.round(n * 100) / 100;
+
+const PROVIDER_FOR: Record<string, string> = {
+  WALLET: "WALLET",
+  LOYALTY: "LOYALTY",
+  PAYROLL_DEDUCTION: "PAYROLL",
+  CARD: "YOCO",
+  EFT: "OZOW",
+  CASH: "CASH",
+};
 
 const todayRange = () => {
   const start = new Date();
@@ -47,16 +89,18 @@ export async function GET(req: NextRequest, { params }: { params: { path?: strin
     // ---- Generic resource list -------------------------------------------
     const res = RESOURCES[segs[0] ?? ""];
     if (res && segs.length === 1) {
+      const page = Math.max(1, Number(qp.get("page") ?? 1) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number(qp.get("pageSize") ?? 25) || 25));
       let q = scope(db.from(res.table).select(res.select, { count: "exact" }), ctx);
       if (res.softDelete) q = q.is("deletedAt", null);
       const term = qp.get("search");
       if (term && res.searchFields?.length) {
         q = q.or(res.searchFields.map((f) => `${f}.ilike.%${term}%`).join(","));
       }
-      q = q.order(res.orderBy.column, { ascending: res.orderBy.ascending });
+      q = q.order(res.orderBy.column, { ascending: res.orderBy.ascending }).range((page - 1) * pageSize, page * pageSize - 1);
       const { data, count, error } = await q;
       if (error) return fail(error.message, 500);
-      return list(data ?? [], count ?? undefined);
+      return list(data ?? [], count ?? undefined, page, pageSize);
     }
 
     // ---- Bespoke reads ----------------------------------------------------
@@ -478,6 +522,7 @@ export async function POST(req: NextRequest, { params }: { params: { path?: stri
       if (!companyId) return fail("No tenant in context", 400);
       const { data, error } = await db.from(res.table).insert(res.toInsert(body, companyId)).select().single();
       if (error) return fail(error.message, 400);
+      await audit(db, ctx, "CREATE", res.table, data?.id);
       return ok(data);
     }
 
@@ -501,16 +546,95 @@ export async function POST(req: NextRequest, { params }: { params: { path?: stri
     }
 
     if (path === "bookings") {
+      const scheduleId = body.scheduleId;
+      const quantity = Number(body.quantity ?? 1);
+      const employeeId = body.employeeId ?? ctx.employeeId;
+      if (!employeeId) return fail("No employee to book for", 400);
+      if (!scheduleId) return fail("scheduleId is required", 400);
+
+      const { data: schedule } = await db
+        .from("meal_schedules")
+        .select("id,status,capacity,bookingCutoff,meal:meals(retailPrice)")
+        .eq("id", scheduleId)
+        .single();
+      if (!schedule) return fail("Meal schedule not found", 404);
+      if (schedule.status !== "OPEN") return fail("Bookings are closed for this meal", 400);
+      if (schedule.bookingCutoff && new Date(schedule.bookingCutoff) < new Date()) return fail("Booking cutoff has passed", 400);
+
+      if (schedule.capacity != null) {
+        const { data: existing } = await db
+          .from("bookings")
+          .select("quantity")
+          .eq("scheduleId", scheduleId)
+          .in("status", ["PENDING", "CONFIRMED", "COLLECTED"]);
+        const used = (existing ?? []).reduce((n: number, b: any) => n + b.quantity, 0);
+        if (used + quantity > schedule.capacity) return fail("Meal capacity exceeded", 400);
+      }
+
+      const { data: emp } = await db.from("employees").select("mealSubsidy").eq("id", employeeId).single();
+      const retail = Number((schedule as any).meal?.retailPrice ?? 0);
+      const subsidy = Math.min(Number(emp?.mealSubsidy ?? 0), retail);
       const ref = `BK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
       const { data, error } = await db.from("bookings").insert({
         companyId,
-        employeeId: body.employeeId,
-        scheduleId: body.scheduleId,
+        employeeId,
+        scheduleId,
         bookingRef: ref,
         status: "CONFIRMED",
-        quantity: Number(body.quantity ?? 1),
+        quantity,
+        unitPrice: retail,
+        subsidyApplied: round(subsidy * quantity),
+        totalPrice: round((retail - subsidy) * quantity),
       }).select().single();
-      return error ? fail(error.message, 400) : ok(data);
+      if (error) return fail(error.message, 400);
+      await audit(db, ctx, "CREATE", "bookings", data?.id);
+      return ok(data);
+    }
+
+    // Wallet top-up / adjustment ledger
+    if (segs[0] === "wallet" && segs[2] === "topup" && segs[1]) {
+      const employeeId = segs[1];
+      const amount = round(Number(body.amount ?? 0));
+      if (amount <= 0) return fail("Amount must be positive", 400);
+      const { data: w } = await db.from("wallets").select("*").eq("employeeId", employeeId).single();
+      if (!w) return fail("Wallet not found", 404);
+      const balanceAfter = round(Number(w.balance) + amount);
+      await db.from("wallets").update({ balance: balanceAfter }).eq("id", w.id);
+      await db.from("wallet_transactions").insert({
+        walletId: w.id,
+        type: body.payroll ? "PAYROLL_TOPUP" : "CREDIT",
+        amount,
+        balanceAfter,
+        description: body.description ?? "Top-up",
+      });
+      await audit(db, ctx, "UPDATE", "wallets", w.id, { topup: amount });
+      return ok({ balance: balanceAfter });
+    }
+
+    // Loyalty reward redemption: /loyalty/:employeeId/redeem/:rewardId
+    if (segs[0] === "loyalty" && segs[2] === "redeem" && segs[1] && segs[3]) {
+      const employeeId = segs[1];
+      const rewardId = segs[3];
+      const [{ data: acct }, { data: reward }] = await Promise.all([
+        db.from("loyalty_accounts").select("*").eq("employeeId", employeeId).single(),
+        db.from("rewards").select("*").eq("id", rewardId).single(),
+      ]);
+      if (!acct) return fail("Loyalty account not found", 404);
+      if (!reward) return fail("Reward not found", 404);
+      if (reward.stock != null && reward.stock <= 0) return fail("Reward out of stock", 400);
+      if (acct.pointsBalance < reward.pointsCost) return fail("Insufficient points", 400);
+
+      const balanceAfter = acct.pointsBalance - reward.pointsCost;
+      await db.from("loyalty_accounts").update({ pointsBalance: balanceAfter }).eq("id", acct.id);
+      await db.from("loyalty_transactions").insert({ accountId: acct.id, type: "REDEEM", points: reward.pointsCost, balanceAfter, description: `Redeemed: ${reward.name}` });
+      if (reward.stock != null) await db.from("rewards").update({ stock: reward.stock - 1 }).eq("id", reward.id);
+      const { data: redemption } = await db
+        .from("reward_redemptions")
+        .insert({ rewardId, accountId: acct.id, pointsSpent: reward.pointsCost, status: "FULFILLED" })
+        .select()
+        .single();
+      await audit(db, ctx, "UPDATE", "loyalty_accounts", acct.id, { redeemed: reward.name });
+      return ok(redemption ?? { ok: true });
     }
 
     if (path === "pos/checkout") return posCheckout(db, ctx, body);
@@ -583,6 +707,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { path?: str
   try {
     const { data, error } = await scope(db.from(res.table).update(patch), ctx).eq("id", segs[1]).select().single();
     if (error) return fail(error.message, 400);
+    await audit(db, ctx, "UPDATE", res.table, segs[1]);
     return ok(data);
   } catch (e) {
     return fail((e as Error).message, 500);
@@ -616,6 +741,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { path?: st
       : scope(db.from(res.table).delete(), ctx);
     const { error } = await q.eq("id", segs[1]);
     if (error) return fail(error.message, 400);
+    await audit(db, ctx, "DELETE", res.table, segs[1]);
     return ok({ id: segs[1], deleted: true });
   } catch (e) {
     return fail((e as Error).message, 500);
@@ -653,18 +779,41 @@ async function usersList(db: Db, ctx: TenantContext) {
   return list(rows);
 }
 
+/**
+ * Full POS settlement: records the sale, takes payment (wallet debit / loyalty
+ * redeem), issues a receipt, accrues loyalty and deducts inventory. Balance
+ * checks run before any writes. Sequential (not a single DB transaction) — for
+ * strict atomicity move this into a Postgres RPC.
+ */
 async function posCheckout(db: Db, ctx: TenantContext, body: any) {
-  const companyId = ctx.companyId ?? body.companyId;
-  const items: any[] = body.items ?? [];
-  const subtotal = items.reduce((s, i) => s + Number(i.unitPrice) * Number(i.quantity), 0);
+  const companyId = ctx.activeCompanyId ?? ctx.companyId ?? body.companyId;
+  const items: any[] = Array.isArray(body.items) ? body.items : [];
+  if (items.length === 0) return fail("Cart is empty", 400);
+
+  const subtotal = round(items.reduce((s, i) => s + Number(i.unitPrice) * Number(i.quantity), 0));
   const discount = Number(body.discount ?? 0);
-  const total = Math.max(0, subtotal - discount);
+  const total = Math.max(0, round(subtotal - discount));
+  const method: string = body.method ?? "CASH";
+  const employeeId: string | null = body.employeeId ?? null;
   const receiptNumber = `RC-${Date.now().toString(36).toUpperCase()}`;
+
+  // Pre-flight balance checks (fail before writing anything).
+  let wallet: any = null;
+  let redeemAccount: any = null;
+  if (employeeId && method === "WALLET") {
+    ({ data: wallet } = await db.from("wallets").select("*").eq("employeeId", employeeId).single());
+    if (!wallet) return fail("Employee wallet not found", 400);
+    if (Number(wallet.balance) < total) return fail("Insufficient wallet balance", 400);
+  }
+  if (employeeId && method === "LOYALTY") {
+    ({ data: redeemAccount } = await db.from("loyalty_accounts").select("*").eq("employeeId", employeeId).single());
+    if (!redeemAccount || redeemAccount.pointsBalance < Math.ceil(total)) return fail("Insufficient loyalty points", 400);
+  }
 
   const { data: txn, error } = await db.from("pos_transactions").insert({
     companyId,
     cashierId: ctx.userId,
-    employeeId: body.employeeId ?? null,
+    employeeId,
     receiptNumber,
     status: "COMPLETED",
     subtotal,
@@ -673,25 +822,63 @@ async function posCheckout(db: Db, ctx: TenantContext, body: any) {
   }).select().single();
   if (error || !txn) return fail(error?.message ?? "Checkout failed", 400);
 
-  if (items.length) {
-    await db.from("pos_items").insert(
-      items.map((i) => ({
-        transactionId: txn.id,
-        retailProductId: i.retailProductId ?? null,
-        label: i.label,
-        quantity: Number(i.quantity),
-        unitPrice: Number(i.unitPrice),
-        lineTotal: Number(i.unitPrice) * Number(i.quantity),
-      })),
-    );
-  }
+  await db.from("pos_items").insert(
+    items.map((i) => ({
+      transactionId: txn.id,
+      retailProductId: i.retailProductId ?? null,
+      label: i.label,
+      quantity: Number(i.quantity),
+      unitPrice: Number(i.unitPrice),
+      lineTotal: round(Number(i.unitPrice) * Number(i.quantity)),
+    })),
+  );
   await db.from("payments").insert({
     companyId,
     posTransactionId: txn.id,
-    method: body.method ?? "CASH",
-    provider: body.method === "CARD" ? "YOCO" : body.method === "WALLET" ? "WALLET" : "CASH",
+    method,
+    provider: PROVIDER_FOR[method] ?? "CASH",
     status: "CAPTURED",
     amount: total,
   });
-  return ok({ transaction: txn, total });
+  await db.from("receipts").insert({ posTransactionId: txn.id, number: receiptNumber });
+
+  // Wallet debit
+  if (wallet) {
+    const balanceAfter = round(Number(wallet.balance) - total);
+    await db.from("wallets").update({ balance: balanceAfter }).eq("id", wallet.id);
+    await db.from("wallet_transactions").insert({
+      walletId: wallet.id, type: "DEBIT", amount: total, balanceAfter, posTransactionId: txn.id, description: `POS ${receiptNumber}`,
+    });
+  }
+  // Loyalty redemption
+  if (redeemAccount) {
+    const points = Math.ceil(total);
+    const balanceAfter = redeemAccount.pointsBalance - points;
+    await db.from("loyalty_accounts").update({ pointsBalance: balanceAfter }).eq("id", redeemAccount.id);
+    await db.from("loyalty_transactions").insert({ accountId: redeemAccount.id, type: "REDEEM", points, balanceAfter, description: `POS ${receiptNumber}` });
+  }
+  // Loyalty accrual (earn 0.1 pt per currency unit) for non-loyalty payments
+  if (employeeId && method !== "LOYALTY") {
+    const { data: acct } = await db.from("loyalty_accounts").select("*").eq("employeeId", employeeId).single();
+    const earn = Math.floor(total * 0.1);
+    if (acct && earn > 0) {
+      const balanceAfter = acct.pointsBalance + earn;
+      await db.from("loyalty_accounts").update({ pointsBalance: balanceAfter, lifetimePoints: acct.lifetimePoints + earn }).eq("id", acct.id);
+      await db.from("loyalty_transactions").insert({ accountId: acct.id, type: "EARN", points: earn, balanceAfter, description: `POS ${receiptNumber}` });
+    }
+  }
+  // Deduct inventory for retail items linked to stock
+  for (const item of items) {
+    if (!item.retailProductId) continue;
+    const { data: rp } = await db.from("retail_products").select("inventoryProductId").eq("id", item.retailProductId).single();
+    if (!rp?.inventoryProductId) continue;
+    const { data: prod } = await db.from("inventory_products").select("id,quantityOnHand").eq("id", rp.inventoryProductId).single();
+    if (!prod) continue;
+    const balanceAfter = round(Number(prod.quantityOnHand) - Number(item.quantity));
+    await db.from("inventory_products").update({ quantityOnHand: balanceAfter }).eq("id", prod.id);
+    await db.from("stock_movements").insert({ productId: prod.id, type: "SALE_DEDUCTION", quantity: -Number(item.quantity), balanceAfter, reference: receiptNumber });
+  }
+
+  await audit(db, ctx, "CREATE", "pos_transactions", txn.id, { total, method });
+  return ok({ transaction: txn, receipt: receiptNumber, total });
 }
